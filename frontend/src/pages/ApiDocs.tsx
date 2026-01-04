@@ -69,7 +69,7 @@ export default function ApiDocs() {
 
               <div className={styles.infoCard}>
                 <h3>Base URL</h3>
-                <code className={styles.baseUrl}>https://api.yalavoch.uz</code>
+                <code className={styles.baseUrl}>https://api.alavo.uz</code>
               </div>
 
               <h2>Quick Start</h2>
@@ -446,7 +446,7 @@ export default function ApiDocs() {
                 <div className={styles.codeHeader}>
                   <span>JavaScript</span>
                   <button onClick={() => copyCode(`const API_KEY = 'otp_your_api_key';
-const BASE_URL = 'https://api.yalavoch.uz';
+const BASE_URL = 'https://api.alavo.uz';
 
 // Send OTP
 async function sendOTP(phoneNumber) {
@@ -488,7 +488,7 @@ if (result.success) {
                   </button>
                 </div>
                 <pre><code>{`const API_KEY = 'otp_your_api_key';
-const BASE_URL = 'https://api.yalavoch.uz';
+const BASE_URL = 'https://api.alavo.uz';
 
 // Send OTP
 async function sendOTP(phoneNumber) {
@@ -535,7 +535,7 @@ if (result.success) {
                   <button onClick={() => copyCode(`import requests
 
 API_KEY = 'otp_your_api_key'
-BASE_URL = 'https://api.yalavoch.uz'
+BASE_URL = 'https://api.alavo.uz'
 
 def send_otp(phone_number):
     response = requests.post(
@@ -573,7 +573,7 @@ if verification['success']:
                 <pre><code>{`import requests
 
 API_KEY = 'otp_your_api_key'
-BASE_URL = 'https://api.yalavoch.uz'
+BASE_URL = 'https://api.alavo.uz'
 
 def send_otp(phone_number):
     response = requests.post(
@@ -613,13 +613,13 @@ if verification['success']:
                   <span>cURL</span>
                 </div>
                 <pre><code>{`# Send OTP
-curl -X POST https://api.yalavoch.uz/otp/send \\
+curl -X POST https://api.alavo.uz/otp/send \\
   -H "Content-Type: application/json" \\
   -H "X-API-Key: otp_your_api_key" \\
   -d '{"phoneNumber": "+998901234567"}'
 
 # Verify OTP
-curl -X POST https://api.yalavoch.uz/otp/verify \\
+curl -X POST https://api.alavo.uz/otp/verify \\
   -H "Content-Type: application/json" \\
   -H "X-API-Key: otp_your_api_key" \\
   -d '{"requestId": "your-request-id", "code": "123456"}'`}</code></pre>

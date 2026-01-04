@@ -273,7 +273,7 @@ yalavoch/
 
 ```javascript
 // 1. Request OTP
-const response = await fetch('https://api.yalavoch.uz/otp/send', {
+const response = await fetch('https://api.alavo.uz/otp/send', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
@@ -288,7 +288,7 @@ const { requestId, botLink, otpSent } = await response.json();
 // Show: "Open {botLink} and share your contact to receive your code"
 
 // 3. User enters code, then verify
-const verify = await fetch('https://api.yalavoch.uz/otp/verify', {
+const verify = await fetch('https://api.alavo.uz/otp/verify', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',

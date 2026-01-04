@@ -6,7 +6,7 @@ This guide walks you through deploying Yalavoch to a Hetzner Cloud VM with Cloud
 
 - Hetzner Cloud account
 - Cloudflare account (free tier works)
-- Domain name (e.g., `yalavoch.uz`) managed by Cloudflare
+- Domain name (e.g., `alavo.uz`) managed by Cloudflare
 - Telegram Bot Token (from [@BotFather](https://t.me/BotFather))
 
 ---
@@ -69,7 +69,7 @@ For **Full (Strict)** mode, create a Cloudflare Origin Certificate:
 2. Click **Create Certificate**
 3. Choose:
    - Private key type: **RSA (2048)**
-   - Hostnames: `yalavoch.uz`, `*.yalavoch.uz`
+   - Hostnames: `alavo.uz`, `*.alavo.uz`
    - Certificate validity: **15 years**
 4. Click **Create**
 5. **Save both the certificate and private key** - you'll need these later
@@ -141,7 +141,7 @@ Add the following (replace with your values):
 
 ```env
 # Domain
-DOMAIN=yalavoch.uz
+DOMAIN=alavo.uz
 
 # PostgreSQL Database
 POSTGRES_USER=yalavoch
@@ -244,7 +244,7 @@ You should see:
 curl http://localhost/health
 
 # Via Cloudflare (should work with HTTPS)
-curl https://yalavoch.uz/health
+curl https://alavo.uz/health
 ```
 
 ### Check Logs
@@ -389,7 +389,7 @@ systemctl restart docker
 
 ```bash
 # Verify DNS is pointing through Cloudflare
-dig yalavoch.uz
+dig alavo.uz
 
 # Check if your server is accessible
 curl -I http://YOUR_SERVER_IP/health
@@ -506,7 +506,7 @@ docker ps
 docker compose -f docker-compose.cloudflare.yml logs -f
 ```
 
-Your Yalavoch OTP service should now be running at `https://yalavoch.uz`! 🚀
+Your Yalavoch OTP service should now be running at `https://alavo.uz`! 🚀
 
 ---
 
@@ -518,4 +518,224 @@ Your Yalavoch OTP service should now be running at `https://yalavoch.uz`! 🚀
 - ✅ **Hidden Origin IP** - Your server IP stays private
 - ✅ **Analytics** - Traffic insights and security reports
 - ✅ **Firewall Rules** - Block malicious traffic easily
+
+---
+
+## Additional Cloudflare DNS & Security Configuration
+
+### Complete DNS Records Setup
+
+Add these records in Cloudflare DNS settings:
+
+| Type | Name | Content | Proxy Status | TTL | Notes |
+|------|------|---------|--------------|-----|-------|
+| A | @ | YOUR_SERVER_IP | Proxied ☁️ | Auto | Main domain |
+| A | www | YOUR_SERVER_IP | Proxied ☁️ | Auto | WWW subdomain |
+| A | api | YOUR_SERVER_IP | Proxied ☁️ | Auto | Optional: API subdomain |
+| CNAME | * | alavo.uz | DNS Only ⚪ | Auto | Optional: Wildcard catch-all |
+| TXT | @ | v=spf1 -all | N/A | Auto | Prevents email spoofing |
+| TXT | _dmarc | v=DMARC1; p=reject; | N/A | Auto | Email authentication |
+| CAA | @ | 0 issue "letsencrypt.org" | N/A | Auto | CA Authorization |
+| CAA | @ | 0 issuewild ";" | N/A | Auto | Prevent wildcard certs |
+
+### Cloudflare Security Settings
+
+#### 1. SSL/TLS Configuration
+
+Go to **SSL/TLS** → **Overview**:
+- ✅ Set encryption mode to **Full (Strict)** with Origin Certificate
+- Or use **Full** mode if using self-signed certificates
+
+Go to **SSL/TLS** → **Edge Certificates**:
+- ✅ Always Use HTTPS: **ON**
+- ✅ Automatic HTTPS Rewrites: **ON**
+- ✅ Minimum TLS Version: **TLS 1.2**
+- ✅ Opportunistic Encryption: **ON**
+- ✅ TLS 1.3: **ON**
+
+#### 2. Security Settings
+
+Go to **Security** → **Settings**:
+- ✅ Security Level: **Medium** (or High for sensitive apps)
+- ✅ Challenge Passage: **30 minutes**
+- ✅ Browser Integrity Check: **ON**
+
+#### 3. WAF (Web Application Firewall)
+
+Go to **Security** → **WAF**:
+
+**Create Custom Rules to protect admin endpoints:**
+
+```
+Rule 1: Block Admin Access from Outside
+- Field: URI Path
+- Operator: starts with
+- Value: /admin
+- Action: Block (unless your IP)
+
+# Or use this expression:
+(http.request.uri.path contains "/admin" and not ip.src in {YOUR_OFFICE_IP})
+```
+
+**Rate Limiting Rules:**
+
+```
+Rule: Rate Limit OTP Requests
+- Field: URI Path  
+- Operator: contains
+- Value: /otp
+- Requests: 20 per 1 minute per IP
+- Action: Block for 10 minutes
+```
+
+#### 4. Bot Protection (Free Tier)
+
+Go to **Security** → **Bots**:
+- ✅ Bot Fight Mode: **ON**
+- This blocks obvious bad bots automatically
+
+#### 5. Firewall Rules (Recommended)
+
+Go to **Security** → **WAF** → **Custom Rules**:
+
+**Rule 1: Block Bad Countries** (Optional)
+```
+Expression: (ip.geoip.country in {"CN" "RU" "KP"})
+Action: Managed Challenge
+```
+
+**Rule 2: Protect API Endpoints**
+```
+Expression: (http.request.uri.path contains "/otp/send" and http.request.method eq "POST")
+Action: JS Challenge
+```
+
+**Rule 3: Allow Only Telegram IPs for Webhooks** (if using webhooks)
+```
+Expression: (http.request.uri.path contains "/webhook" and not ip.src in {149.154.160.0/20 91.108.4.0/22})
+Action: Block
+```
+
+### Cloudflare Caching Rules
+
+Go to **Caching** → **Cache Rules**:
+
+**Rule 1: Cache Static Assets Aggressively**
+```
+- Match: (http.request.uri.path.extension in {"js" "css" "png" "jpg" "svg" "woff2" "ico"})
+- Cache eligibility: Eligible for cache
+- Edge TTL: 1 month
+- Browser TTL: 1 year
+```
+
+**Rule 2: Bypass Cache for API**
+```
+- Match: (http.request.uri.path contains "/otp" or http.request.uri.path contains "/users" or http.request.uri.path contains "/dashboard" or http.request.uri.path contains "/admin")
+- Cache eligibility: Bypass cache
+```
+
+### Speed Optimization
+
+Go to **Speed** → **Optimization**:
+
+**Content Optimization:**
+- ✅ Auto Minify: JavaScript, CSS, HTML
+- ✅ Brotli: **ON**
+- ✅ Early Hints: **ON**
+
+**Protocol Optimization:**
+- ✅ HTTP/2: **ON** (enabled by default)
+- ✅ HTTP/3 (QUIC): **ON**
+
+### Cloudflare Page Rules (Legacy but still useful)
+
+Go to **Rules** → **Page Rules**:
+
+**Rule 1: Force HTTPS**
+```
+URL: http://*alavo.uz/*
+Setting: Always Use HTTPS
+```
+
+**Rule 2: Cache Everything for Assets**
+```
+URL: *alavo.uz/*.js
+Settings: 
+  - Cache Level: Cache Everything
+  - Edge Cache TTL: 1 month
+```
+
+### Network Settings
+
+Go to **Network**:
+- ✅ HTTP/3 (with QUIC): **ON**
+- ✅ WebSockets: **ON** (if needed for real-time features)
+- ✅ Onion Routing: **OFF** (unless you want Tor access)
+- ✅ IP Geolocation: **ON**
+
+### Getting Real Client IPs
+
+Cloudflare proxies requests, so your server sees Cloudflare IPs instead of real client IPs. The real IP is passed in the `CF-Connecting-IP` header.
+
+Your nginx config already handles this with `X-Forwarded-For`, but you can also add:
+
+```nginx
+# Add to nginx.conf
+set_real_ip_from 103.21.244.0/22;
+set_real_ip_from 103.22.200.0/22;
+set_real_ip_from 103.31.4.0/22;
+set_real_ip_from 104.16.0.0/13;
+set_real_ip_from 104.24.0.0/14;
+set_real_ip_from 108.162.192.0/18;
+set_real_ip_from 131.0.72.0/22;
+set_real_ip_from 141.101.64.0/18;
+set_real_ip_from 162.158.0.0/15;
+set_real_ip_from 172.64.0.0/13;
+set_real_ip_from 173.245.48.0/20;
+set_real_ip_from 188.114.96.0/20;
+set_real_ip_from 190.93.240.0/20;
+set_real_ip_from 197.234.240.0/22;
+set_real_ip_from 198.41.128.0/17;
+real_ip_header CF-Connecting-IP;
+```
+
+### Verify Cloudflare Setup
+
+```bash
+# Check if traffic goes through Cloudflare
+curl -I https://alavo.uz | grep -i "cf-"
+
+# Should see headers like:
+# cf-ray: xxxxx
+# cf-cache-status: DYNAMIC
+# server: cloudflare
+
+# Check SSL certificate issuer
+echo | openssl s_client -connect alavo.uz:443 2>/dev/null | openssl x509 -noout -issuer
+# Should show: Cloudflare Inc
+```
+
+### Cloudflare Analytics
+
+Monitor your site at **Analytics & Logs** → **Traffic**:
+- Unique visitors
+- Requests by country
+- Bandwidth saved by caching
+- Threats blocked
+- Cache hit ratio
+
+---
+
+## Environment Variables Reference
+
+| Variable | Required | Description | Example |
+|----------|----------|-------------|---------|
+| `DOMAIN` | Yes | Your domain name | `alavo.uz` |
+| `POSTGRES_USER` | Yes | Database username | `yalavoch` |
+| `POSTGRES_PASSWORD` | Yes | Database password | `$(openssl rand -base64 24)` |
+| `POSTGRES_DB` | Yes | Database name | `yalavoch` |
+| `TELEGRAM_BOT_TOKEN` | Yes | From @BotFather | `123456:ABC-DEF...` |
+| `BOT_USERNAME` | Yes | Bot username without @ | `yalavoch_bot` |
+| `JWT_SECRET` | Yes | 64+ char random string | `$(openssl rand -base64 48)` |
+| `ADMIN_SECRET` | Yes | Admin API key | `your-secure-admin-key` |
 
