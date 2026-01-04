@@ -10,6 +10,10 @@ import dashboardRoutes from "./routes/dashboard.js";
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Trust proxy - required when running behind reverse proxy (nginx, Cloudflare, etc.)
+// This ensures express-rate-limit correctly identifies users by their real IP
+app.set('trust proxy', 1);
+
 // CORS - allow any origin for API service
 app.use(cors());
 
