@@ -62,6 +62,7 @@ services:
       - yalavoch-network
 
   # Frontend - Nginx serves React app and proxies to backend
+  # Cloudflare handles SSL termination, so we only need HTTP
   frontend:
     build:
       context: ./frontend
@@ -70,9 +71,6 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"
-      - "443:443"
-    volumes:
-      - ./ssl:/etc/nginx/ssl:ro
     depends_on:
       - backend
     networks:
