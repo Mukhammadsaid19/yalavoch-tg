@@ -1,0 +1,130 @@
+# Production docker-compose with SSL (Traefik)
+version: '3.8'
+
+services:
+  # Traefik Reverse Proxy with automatic SSL
+  traefik:
+    image: traefik:v2.10
+    container_name: yalavoch-traefik
+    restart: unless-stopped
+    command:
+      - "--api.dashboard=false"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - letsencrypt:/letsencrypt
+    networks:
+      - yalavoch-network
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: yalavoch-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-yalavoch}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-yalavoch}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-yalavoch}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - yalavoch-network
+
+  # Backend API Server
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: yalavoch-backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-yalavoch}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-yalavoch}?schema=public
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      BOT_USERNAME: ${BOT_USERNAME}
+      JWT_SECRET: ${JWT_SECRET}
+      ADMIN_SECRET: ${ADMIN_SECRET}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - yalavoch-network
+
+  # Telegram Bot
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile.bot
+    container_name: yalavoch-bot
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-yalavoch}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-yalavoch}?schema=public
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      BOT_USERNAME: ${BOT_USERNAME}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - yalavoch-network
+
+  # Frontend with Traefik labels for SSL
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: yalavoch-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.yalavoch.rule=Host(`${DOMAIN}`)"
+      - "traefik.http.routers.yalavoch.entrypoints=websecure"
+      - "traefik.http.routers.yalavoch.tls.certresolver=letsencrypt"
+      - "traefik.http.services.yalavoch.loadbalancer.server.port=80"
+    networks:
+      - yalavoch-network
+
+  # Database migrations (run once)
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: yalavoch-migrate
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-yalavoch}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-yalavoch}?schema=public
+    command: npx prisma db push
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - yalavoch-network
+    restart: "no"
+
+volumes:
+  postgres_data:
+  letsencrypt:
+
+networks:
+  yalavoch-network:
+    driver: bridge
+
