@@ -1,11 +1,12 @@
-# Yalavoch Deployment Guide - Hetzner VM
+# Yalavoch Deployment Guide - Hetzner VM + Cloudflare
 
-This guide walks you through deploying Yalavoch to a Hetzner Cloud VM.
+This guide walks you through deploying Yalavoch to a Hetzner Cloud VM with Cloudflare for DNS and SSL.
 
 ## Prerequisites
 
 - Hetzner Cloud account
-- Domain name (e.g., `yalavoch.uz`) pointed to your server
+- Cloudflare account (free tier works)
+- Domain name (e.g., `yalavoch.uz`) managed by Cloudflare
 - Telegram Bot Token (from [@BotFather](https://t.me/BotFather))
 
 ---
@@ -30,16 +31,50 @@ After creation, note the public IP address (e.g., `49.12.xxx.xxx`)
 
 ---
 
-## Step 2: Configure DNS
+## Step 2: Configure Cloudflare DNS
 
-Point your domain to the server:
+### Add Your Domain to Cloudflare
 
-```
-A    @       49.12.xxx.xxx    (your server IP)
-A    www     49.12.xxx.xxx    (your server IP)
-```
+1. Log in to [Cloudflare Dashboard](https://dash.cloudflare.com/)
+2. Click **Add a Site** and enter your domain
+3. Select the **Free** plan
+4. Cloudflare will scan existing DNS records
+5. Update your domain's nameservers at your registrar to Cloudflare's nameservers
 
-Wait for DNS propagation (usually 5-30 minutes).
+### Configure DNS Records
+
+In Cloudflare DNS settings, add:
+
+| Type | Name | Content | Proxy Status |
+|------|------|---------|--------------|
+| A | @ | 49.12.xxx.xxx (your server IP) | Proxied (orange cloud) |
+| A | www | 49.12.xxx.xxx (your server IP) | Proxied (orange cloud) |
+
+### Configure SSL/TLS Settings
+
+1. Go to **SSL/TLS** → **Overview**
+2. Set encryption mode to **Full** (recommended) or **Full (Strict)**
+   - **Full**: Encrypts traffic between Cloudflare and your server (self-signed cert OK)
+   - **Full (Strict)**: Requires valid SSL certificate on your server
+
+3. Go to **SSL/TLS** → **Edge Certificates**
+   - Enable **Always Use HTTPS**
+   - Enable **Automatic HTTPS Rewrites**
+
+### (Recommended) Create Origin Certificate
+
+For **Full (Strict)** mode, create a Cloudflare Origin Certificate:
+
+1. Go to **SSL/TLS** → **Origin Server**
+2. Click **Create Certificate**
+3. Choose:
+   - Private key type: **RSA (2048)**
+   - Hostnames: `yalavoch.uz`, `*.yalavoch.uz`
+   - Certificate validity: **15 years**
+4. Click **Create**
+5. **Save both the certificate and private key** - you'll need these later
+
+Wait for DNS propagation (usually instant with Cloudflare).
 
 ---
 
@@ -105,11 +140,8 @@ nano .env
 Add the following (replace with your values):
 
 ```env
-# Domain (for SSL certificate)
+# Domain
 DOMAIN=yalavoch.uz
-
-# Email for Let's Encrypt SSL certificate
-ACME_EMAIL=your-email@example.com
 
 # PostgreSQL Database
 POSTGRES_USER=yalavoch
@@ -141,23 +173,43 @@ openssl rand -base64 24
 chmod 600 .env
 ```
 
+### (Optional) Setup Cloudflare Origin Certificate
+
+If using **Full (Strict)** SSL mode, add the Origin Certificate:
+
+```bash
+# Create SSL directory
+mkdir -p /opt/yalavoch/ssl
+
+# Create certificate file (paste from Cloudflare)
+nano /opt/yalavoch/ssl/origin.pem
+
+# Create private key file (paste from Cloudflare)
+nano /opt/yalavoch/ssl/origin-key.pem
+
+# Set permissions
+chmod 600 /opt/yalavoch/ssl/*
+```
+
 ---
 
 ## Step 5: Build & Run
 
-### Option A: Production with SSL (Recommended)
+### Production with Cloudflare (Recommended)
+
+Since Cloudflare handles SSL termination, we use a simpler setup:
 
 ```bash
 cd /opt/yalavoch
 
 # Build and start all services
-docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.cloudflare.yml up -d --build
 
 # Check logs
-docker compose -f docker-compose.prod.yml logs -f
+docker compose -f docker-compose.cloudflare.yml logs -f
 ```
 
-### Option B: Development/Testing (No SSL)
+### Alternative: Development/Testing (Local only)
 
 ```bash
 cd /opt/yalavoch
@@ -184,15 +236,14 @@ You should see:
 - `yalavoch-backend` - Express API server
 - `yalavoch-bot` - Telegram bot
 - `yalavoch-db` - PostgreSQL database
-- `yalavoch-traefik` - Reverse proxy (production only)
 
 ### Test Endpoints
 
 ```bash
-# Health check
+# Health check (locally)
 curl http://localhost/health
 
-# With domain (after SSL)
+# Via Cloudflare (should work with HTTPS)
 curl https://yalavoch.uz/health
 ```
 
@@ -200,12 +251,12 @@ curl https://yalavoch.uz/health
 
 ```bash
 # All services
-docker compose -f docker-compose.prod.yml logs -f
+docker compose -f docker-compose.cloudflare.yml logs -f
 
 # Specific service
-docker compose -f docker-compose.prod.yml logs -f backend
-docker compose -f docker-compose.prod.yml logs -f bot
-docker compose -f docker-compose.prod.yml logs -f frontend
+docker compose -f docker-compose.cloudflare.yml logs -f backend
+docker compose -f docker-compose.cloudflare.yml logs -f bot
+docker compose -f docker-compose.cloudflare.yml logs -f frontend
 ```
 
 ---
@@ -215,19 +266,19 @@ docker compose -f docker-compose.prod.yml logs -f frontend
 ### Restart Services
 
 ```bash
-docker compose -f docker-compose.prod.yml restart
+docker compose -f docker-compose.cloudflare.yml restart
 ```
 
 ### Stop Services
 
 ```bash
-docker compose -f docker-compose.prod.yml down
+docker compose -f docker-compose.cloudflare.yml down
 ```
 
 ### Rebuild After Code Changes
 
 ```bash
-docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.cloudflare.yml up -d --build
 ```
 
 ### View Database
@@ -239,7 +290,7 @@ docker exec -it yalavoch-db psql -U yalavoch -d yalavoch
 ### Run Database Migrations
 
 ```bash
-docker compose -f docker-compose.prod.yml run --rm migrate
+docker compose -f docker-compose.cloudflare.yml run --rm migrate
 ```
 
 ### Backup Database
@@ -323,15 +374,25 @@ systemctl restart docker
 
 ## Troubleshooting
 
-### SSL Certificate Issues
+### SSL/HTTPS Issues
+
+**Error 525 (SSL Handshake Failed)**:
+- Check SSL mode in Cloudflare is set to **Full** (not Full Strict) if not using Origin Certificate
+- If using Origin Certificate, ensure files are mounted correctly
+
+**Error 521 (Web Server is Down)**:
+- Verify containers are running: `docker ps`
+- Check if port 80 is exposed: `curl http://localhost/health`
+
+**Mixed Content Warnings**:
+- Enable **Automatic HTTPS Rewrites** in Cloudflare SSL/TLS settings
 
 ```bash
-# Check Traefik logs
-docker logs yalavoch-traefik
-
-# Verify DNS is pointing to server
+# Verify DNS is pointing through Cloudflare
 dig yalavoch.uz
-nslookup yalavoch.uz
+
+# Check if your server is accessible
+curl -I http://YOUR_SERVER_IP/health
 ```
 
 ### Database Connection Issues
@@ -364,6 +425,16 @@ docker logs yalavoch-frontend
 docker exec yalavoch-frontend nginx -t
 ```
 
+### Cloudflare-Specific Issues
+
+**Requests Timing Out**:
+- Check Cloudflare Firewall rules aren't blocking requests
+- Verify your server IP isn't being rate-limited
+
+**Orange Cloud (Proxy) Issues**:
+- Test with proxy disabled (grey cloud) temporarily
+- Check Cloudflare → Analytics for blocked requests
+
 ---
 
 ## Architecture Overview
@@ -375,8 +446,14 @@ docker exec yalavoch-frontend nginx -t
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                    Traefik (SSL/Proxy)                       │
-│                     Port 80, 443                             │
+│                    Cloudflare (CDN/SSL)                      │
+│               DNS, DDoS Protection, SSL/TLS                  │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                   Hetzner VM (Your Server)                   │
+│                       Port 80/443                            │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -421,13 +498,24 @@ cd yalavoch
 # 4. Create .env file with your secrets
 nano .env
 
-# 5. Deploy
-docker compose -f docker-compose.prod.yml up -d --build
+# 5. Deploy with Cloudflare
+docker compose -f docker-compose.cloudflare.yml up -d --build
 
 # 6. Check status
 docker ps
-docker compose -f docker-compose.prod.yml logs -f
+docker compose -f docker-compose.cloudflare.yml logs -f
 ```
 
 Your Yalavoch OTP service should now be running at `https://yalavoch.uz`! 🚀
+
+---
+
+## Cloudflare Benefits
+
+- ✅ **Free SSL/TLS** - No need for Let's Encrypt setup
+- ✅ **DDoS Protection** - Built-in attack mitigation
+- ✅ **CDN Caching** - Faster static asset delivery
+- ✅ **Hidden Origin IP** - Your server IP stays private
+- ✅ **Analytics** - Traffic insights and security reports
+- ✅ **Firewall Rules** - Block malicious traffic easily
 
