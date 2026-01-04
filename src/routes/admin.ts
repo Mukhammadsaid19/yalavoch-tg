@@ -26,12 +26,28 @@ function authenticateAdmin(req: Request, res: Response, next: Function) {
  */
 router.post("/clients", authenticateAdmin, async (req: Request, res: Response) => {
   try {
-    const { name, webhookUrl } = req.body;
+    const { name, webhookUrl, userId } = req.body;
 
     if (!name) {
       return res.status(400).json({
         success: false,
         error: "Client name is required",
+      });
+    }
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        error: "User ID is required",
+      });
+    }
+
+    // Verify user exists
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: "User not found",
       });
     }
 
@@ -43,6 +59,7 @@ router.post("/clients", authenticateAdmin, async (req: Request, res: Response) =
         name,
         apiKey,
         webhookUrl,
+        userId,
       },
     });
 
