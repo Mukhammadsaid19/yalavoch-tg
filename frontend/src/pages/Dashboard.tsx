@@ -105,7 +105,7 @@ export default function Dashboard() {
         cornerRadius: 8,
         titleFont: {
           family: 'Instrument Sans',
-          weight: '600' as const,
+          weight: 600,
         },
         bodyFont: {
           family: 'Instrument Sans',
